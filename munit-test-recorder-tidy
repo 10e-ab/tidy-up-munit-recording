@@ -1,0 +1,265 @@
+#!/usr/bin/env ruby
+
+require 'rexml/document'
+include REXML
+require "tty-prompt"
+require 'rouge'
+require 'fileutils'
+
+MAX_CONTENT_LENGHT=500
+$files_to_rename=[]
+$files_to_delete=[]
+
+
+def clear_screen
+  if RUBY_PLATFORM =~ /win32|win64|\.NET|windows|cygwin|mingw32/i
+    system('cls')
+  else
+    system('clear')
+  end
+end
+
+def truncate_string(str, max_length)
+  if str.length > max_length
+    "#{str[0...max_length-3]}..."
+  else
+    str
+  end
+end
+
+def prompt_yes_or_no(question)
+  valid_input = false
+  input = nil
+
+  until valid_input
+    puts question
+    input = STDIN.gets.chomp.upcase  # Convert input to uppercase for case-insensitive comparison
+    valid_input = ['Y', 'N'].include?(input)
+    puts "Invalid input. Please enter Y or N." unless valid_input
+  end
+
+  input
+end
+
+def prompt_for_action(question,valid_responses)
+  valid_input = false
+  input = nil
+
+  until valid_input
+    # puts "Press (i) to inline, (d) to delete or (r) to rename file. Leave empty to skip. Press enter for next"
+    puts question
+    input = STDIN.gets.chomp.upcase  # Convert input to uppercase for case-insensitive comparison
+    valid_input = valid_responses.include?(input)
+    puts "Invalid input" unless valid_input
+  end
+
+  input
+end
+
+def highlight_xml(xml_content)
+  lexer = Rouge::Lexers::XML.new
+  formatter = Rouge::Formatters::Terminal256.new
+  highlighted_xml = formatter.format(lexer.lex(xml_content.to_s))
+end
+
+def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
+  clear_screen()
+  last_doc_name_as_path=last_doc_name.gsub(/\s+/, "_").downcase
+  value = element.attributes['value']
+  if value =~ /(.*)readUrl\('classpath:\/\/(.+?)'\)(.*)/
+    # TODO This wont work unless the script is in the same folder as the munit files
+    value_prefix=$1
+    value_suffix=$3
+    dwl_file_path = "#{munit_directory_path}/../resources/#{$2}"
+    begin 
+     dwl_content = File.read(dwl_file_path)
+    rescue 
+      puts "Could not find file #{dwl_file_path}"
+      puts "Press enter for next"
+      STDIN.gets
+      return
+    end
+
+    # UI
+    puts "In #{mock_or_event} with doc:name \"#{last_doc_name}\""
+    puts highlight_xml(element)
+    puts ""
+    puts "Content of referenced file:"
+    puts truncate_string(dwl_content,MAX_CONTENT_LENGHT)
+    puts ""
+    # puts "Press (i) to inline, (d) to delete or (r) to rename file. Leave empty to skip. Press enter for next"
+    action=prompt_for_action("Press (i) to inline, (d) to delete or (r) to rename file. Leave empty to skip. Press enter for next",["I","D","R",""])
+    # action = STDIN.gets.chomp.upcase
+
+    case action
+    when 'I'
+      # Inline content
+      case element.name
+      when "payload"
+        element.attributes['value'] = "#{value_prefix}#{dwl_content}#{value_suffix}"
+      else
+        element.attributes['value'] = "#[#{dwl_content}]"
+      end
+      puts "Content inlined for #{dwl_file_path}."
+      $files_to_delete << dwl_file_path
+      changes_made = true
+    when 'R'
+      # Rename file reference
+      key = element.attributes['key']
+      case element.name
+      when "variable"
+        suggested_filename = "#{last_doc_name_as_path}_#{key}_variable.dwl"
+      when "attributes"
+        suggested_filename = "#{last_doc_name_as_path}_attributes.dwl"
+      when "payload"
+        suggested_filename = "#{last_doc_name_as_path}_payload.dwl"
+      end
+
+      prompt = TTY::Prompt.new
+      new_filename = prompt.ask('Enter the new file name', value: suggested_filename)
+
+      # TODO What should we do if the file already exists
+
+      dwl_directory_path = File.dirname(dwl_file_path)
+      dwl_folder_name = File.basename(dwl_directory_path)
+
+      element.attributes['value'] = "#{value_prefix} readUrl('classpath://#{dwl_folder_name}/#{new_filename}')#{value_suffix}"
+
+      puts "File reference renamed to #{new_filename}."
+      $files_to_rename << [dwl_file_path,"#{munit_directory_path}/../resources/#{dwl_folder_name}/#{new_filename}"]
+      changes_made = true
+    when 'D'
+      # Delete the element
+      element.parent.delete_element(element)
+      $files_to_delete << dwl_file_path
+      puts "Element deleted."
+      changes_made = true
+    end
+  end
+  return changes_made
+end
+
+def tidy_assert(element,last_doc_name,munit_directory_path)
+  clear_screen()
+  last_doc_name_as_path=last_doc_name.gsub(/\s+/, "_").downcase
+
+  # Extract the DWL file path from the CDATA content
+  if element.to_s =~ /import\s+([^\s:]+)::([^\s]+)/
+    # Construct the file path
+    module_name = $1
+    file_name = $2
+    dwl_file_path = "#{munit_directory_path}/../resources/#{module_name}/#{file_name}.dwl"
+    begin
+      dwl_content = File.read(dwl_file_path)
+    rescue => e
+      puts "Could not find file #{dwl_file_path}"
+      puts "Press enter for next"
+      STDIN.gets
+      return
+    end
+
+    puts "In assert with doc:name \"#{last_doc_name}\""
+    puts highlight_xml(element)
+    puts ""
+    puts "Content of import file:"
+    puts truncate_string(dwl_content,MAX_CONTENT_LENGHT)
+    puts ""
+    action=prompt_for_action("Press (i) to inline or leave empty to skip",["I",""])
+    case action
+    when 'I'
+      # Clear existing CDATA or text
+      element.children.each { |child| element.delete(child) }
+      element.add(REXML::CData.new("#[#{dwl_content}]"))
+      puts "Content inlined for #{dwl_file_path}."
+      $files_to_delete << dwl_file_path
+      changes_made = true
+    end
+  end
+  return changes_made
+end
+
+def tidy_up(munit_file_path)
+  # Load and parse the XML file
+  absolute_path = File.expand_path(munit_file_path)
+  xml_doc = Document.new(File.new(absolute_path))
+  munit_directory_path = File.dirname(absolute_path)
+  puts "Dir: #{munit_directory_path}"
+  changes_made=false
+
+  # Iterate over each element that matches the XPath
+  last_doc_name=""
+  mock_or_event=""
+  xml_doc.elements.each('//*') do |element|
+    if element.name == "mock-when"
+      # This is used to suggest a file name
+      last_doc_name = element.attributes["doc:name"]
+      mock_or_event="mock"
+    elsif element.name == "set-event"
+      # This is used to provide context for the user
+      last_doc_name = element.attributes["doc:name"]
+      mock_or_event="set-event"
+    elsif element.name == "that"
+      changed=tidy_assert(element,last_doc_name,munit_directory_path)
+      changes_made||=changed
+    else
+      changed=tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
+      changes_made||=changed
+    end
+  end
+
+  if changes_made
+    clear_screen()
+    if prompt_yes_or_no("Save changes: (Y/N)")  == 'Y'
+      FileUtils.cp(munit_file_path, "#{munit_file_path}.bak")
+      File.write(munit_file_path, xml_doc)
+      puts "Saved changes"
+    end
+    if $files_to_delete.length > 0
+      puts "Files to delete:"
+      puts $files_to_delete
+
+
+    if prompt_yes_or_no("Delete the files: (Y/N)")  == 'Y'
+        $files_to_delete.each do |file| 
+          FileUtils.rm(file)
+        end
+        puts "Deleted files"
+      end
+    end
+
+    if $files_to_rename.length > 0
+      puts "Files to rename:"
+      $files_to_rename.each {|f,t| puts "From: #{f}, to: #{t}"}
+      if prompt_yes_or_no("Rename the files: (Y/N)")  == 'Y'
+        $files_to_rename.each do |from,to| 
+          if from==to
+            puts "Same file, nothing to rename"
+          else
+            FileUtils.mv(from, to)
+          end
+        end
+        puts "Renamed files"
+      end
+    end
+  else
+    puts "No changes"
+  end
+end
+
+# For testing
+# file_path = '/Users/johancarlsson/projects/itab/ifs-sapi/src/test/munit/engineering-revision-implementation-test-suite.xml'
+# tidy_up(file_path)
+
+
+
+if __FILE__ == $PROGRAM_NAME
+  if ARGV.length != 1
+    puts "Usage: ruby #{__FILE__} path/to/munit_file.xml"
+    exit 1
+  end
+
+  file_path = ARGV[0]
+  ARGV.clear
+  tidy_up(file_path) 
+end
+
