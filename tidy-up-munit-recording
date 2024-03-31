@@ -7,8 +7,13 @@ require 'rouge'
 require 'fileutils'
 require 'io/console'
 require 'pathname'
+require 'rexml/document'
+require 'rexml/formatters/pretty'
+
 
 MAX_CONTENT_LENGHT=500
+XML_FORMATTER_LINE_LENGTH=120
+
 $files_to_rename=[]
 $files_to_delete=[]
 
@@ -108,6 +113,19 @@ end
 def edit_file(file_path)
   editor = ENV['EDITOR'] || (RUBY_PLATFORM =~ /win32|win64|windows/ ? 'notepad' : 'nano')
   system("#{editor} #{file_path}")
+end
+
+
+def save_munit_file(path,document)
+  formatter = REXML::Formatters::Pretty.new(2)
+  # Use " not '
+  document.context[:attribute_quote] = :quote 
+
+  formatter.width = XML_FORMATTER_LINE_LENGTH
+
+  File.open(path, 'w') do |file|
+    formatter.write(document, file)
+  end
 end
 
 
@@ -263,7 +281,7 @@ def tidy_up(munit_file_path)
         FileUtils.cp(munit_file_path, "#{munit_file_path}.bak")
         puts "Backup #{highlight(File.basename(munit_file_path)+'.bak')} created"
       end
-      File.write(munit_file_path, xml_doc)
+      save_munit_file(munit_file_path, xml_doc)
       puts "Saved #{highlight(File.basename(munit_file_path))}"
 
       if $files_to_delete.length > 0
