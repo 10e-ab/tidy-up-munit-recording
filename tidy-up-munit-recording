@@ -105,6 +105,12 @@ def file_and_folder(file_path)
   "#{last_folder_name}/#{filename}"
 end
 
+def edit_file(file_path)
+  editor = ENV['EDITOR'] || (RUBY_PLATFORM =~ /win32|win64|windows/ ? 'notepad' : 'nano')
+  system("#{editor} #{file_path}")
+end
+
+
 def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
   suggested_filename=suggest_filename(element,last_doc_name)
   value = element.attributes['value']
@@ -136,7 +142,7 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
     puts ""
     print_separator()
     puts "Suggested filename: #{highlight(suggested_filename)}"
-    action=prompt_for_action("Action: 'I' (Inline), 'D' (Delete), 'R' (Rename), Leave empty to skip. Confirm with Enter.",["I","D","R",""])
+    action=prompt_for_action("Action: 'I' (Inline), 'D' (Delete), 'R' (Rename), 'E' (Edit), Leave empty to skip. Confirm with Enter.",["I","D","R","E",""])
 
     case action
     when 'I'
@@ -167,6 +173,9 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
       element.parent.delete_element(element)
       $files_to_delete << dwl_file_path
       changes_made = true
+    when 'E'
+      edit_file(dwl_file_path)
+      changes_made=tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
     end
   end
   return changes_made
@@ -202,7 +211,7 @@ def tidy_assert(element,last_doc_name,munit_directory_path)
     puts highlight_dwl(truncate_string(dwl_content,MAX_CONTENT_LENGHT))
     puts ""
     print_separator()
-    action=prompt_for_action("Action: 'I' (Inline), Leave empty to skip. Confirm with Enter.",["I",""])
+    action=prompt_for_action("Action: 'I' (Inline), 'E' (Edit), Leave empty to skip. Confirm with Enter.",["I","E",""])
 
     case action
     when 'I'
@@ -211,6 +220,9 @@ def tidy_assert(element,last_doc_name,munit_directory_path)
       element.add(REXML::CData.new("#[#{dwl_content}]"))
       $files_to_delete << dwl_file_path
       changes_made = true
+    when 'E'
+      edit_file(dwl_file_path)
+      changes_made=tidy_assert(element,last_doc_name,munit_directory_path)
     end
   end
   return changes_made
