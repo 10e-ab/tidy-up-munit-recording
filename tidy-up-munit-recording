@@ -115,17 +115,35 @@ def edit_file(file_path)
   system("#{editor} #{file_path}")
 end
 
+# This function will update all attributes for witch values contain &quot; or &#10; to use surrouding single qoutes
+# And then replace all &quot; to " and &#10; to new lines
+def normalize_attribute_quotes_and_decode_entities(xml_string)
+  # This pattern attempts to match only the value attribute content that includes &quot; or &#10; (New line)
+  pattern = /(\w+)="#(\[[^"]*?(?:&quot;|&#10;)[^"]*?\])"/
+
+  xml_string.gsub(pattern) do
+    key = $1
+    value = $2
+    # Decoding &quot; to " within the value and ensuring the new value is enclosed in single quotes
+    "#{key}='#" + value.gsub('&quot;', '"').gsub('&#10;',"\n") + '\''
+  end
+end
 
 def save_munit_file(path,document)
   formatter = REXML::Formatters::Pretty.new(2)
   # Use " not '
   document.context[:attribute_quote] = :quote 
+  document.context[:prologue_quote] = :quote 
 
   formatter.width = XML_FORMATTER_LINE_LENGTH
 
-  File.open(path, 'w') do |file|
-    formatter.write(document, file)
-  end
+  xml_string = ""
+  formatter.write(document, xml_string)
+
+  xml_string=normalize_attribute_quotes_and_decode_entities(xml_string)
+
+  File.write(path, xml_string)
+
 end
 
 
@@ -182,7 +200,7 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
 
       dwl_directory_path = File.dirname(dwl_file_path)
       dwl_folder_name = File.basename(dwl_directory_path)
-      element.attributes['value'] = "#{expression_start} readUrl('classpath://#{dwl_folder_name}/#{new_filename}')#{expression_end}"
+      element.attributes['value'] = "#{expression_start}readUrl(\"classpath://#{dwl_folder_name}/#{new_filename}\")#{expression_end}"
 
       $files_to_rename << [dwl_file_path,"#{munit_directory_path}/../resources/#{dwl_folder_name}/#{new_filename}"]
       changes_made = true
@@ -260,6 +278,7 @@ def tidy_up(munit_file_path)
     if element.name == "mock-when"
       last_doc_name = element.attributes["doc:name"]
       mock_or_event="mock"
+
     elsif element.name == "set-event"
       last_doc_name = element.attributes["doc:name"]
       mock_or_event="set-event"
