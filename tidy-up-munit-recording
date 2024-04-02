@@ -90,7 +90,7 @@ def highlight(content)
 end
 
 def suggest_filename(element,last_doc_name)
-  last_doc_name_as_path=last_doc_name.gsub(/\s+/, "_").downcase
+  last_doc_name_as_path=last_doc_name.gsub(/\s+/, "-").downcase
   case element.name
   when "variable"
     key = element.attributes['key']
@@ -151,7 +151,7 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
   suggested_filename=suggest_filename(element,last_doc_name)
   value = element.attributes['value']
 
-  if value =~ /(.*)readUrl\('classpath:\/\/(.+?)'\)(.*)/
+  if value =~ /(.*)readUrl\(['"]classpath:\/\/(.+?)['"]\)(.*)/
     expression_start=$1
     expression_end=$3
     dwl_file_path = "#{munit_directory_path}/../resources/#{$2}"
