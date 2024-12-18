@@ -89,16 +89,21 @@ def highlight(content)
   highlighted = formatter.format(lexer.lex(content.to_s))
 end
 
+def downcase_first_letter(str)
+  str[0].to_s.downcase + str[1..-1].to_s
+end
+
+
 def suggest_filename(element,last_doc_name)
-  last_doc_name_as_path=last_doc_name.gsub(/\s+/, "-").downcase
+  last_doc_name_as_path=downcase_first_letter(last_doc_name.gsub(/\s+/, "-"))
   case element.name
   when "variable"
     key = element.attributes['key']
-    "#{last_doc_name_as_path}_#{key}.dwl"
+    "#{last_doc_name_as_path}-#{key}.dwl"
   when "attributes"
-    "#{last_doc_name_as_path}_attributes.dwl"
+    "#{last_doc_name_as_path}-attributes.dwl"
   when "payload"
-    "#{last_doc_name_as_path}_payload.dwl"
+    "#{last_doc_name_as_path}-payload.dwl"
   end
 end
 
@@ -120,6 +125,8 @@ end
 def normalize_attribute_quotes_and_decode_entities(xml_string)
   # This pattern attempts to match only the value attribute content that includes &quot; or &#10; (New line)
   pattern = /(\w+)="#(\[[^"]*?(?:&quot;|&#10;)[^"]*?\])"/
+  
+  # TODO test if the string contains &apos; ', if its does dont gsub
 
   xml_string.gsub(pattern) do
     key = $1
