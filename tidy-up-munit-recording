@@ -154,7 +154,7 @@ def save_munit_file(path,document)
 end
 
 
-def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
+def tidy_readUrl(element,last_doc_name,mock_or_event,current_test,munit_directory_path)
   suggested_filename=suggest_filename(element,last_doc_name)
   value = element.attributes['value']
 
@@ -174,7 +174,7 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
     # UI
     clear_screen()
     print_separator()
-    puts "In #{highlight(mock_or_event)} with doc:name \"#{highlight(last_doc_name)}\""
+    puts "In #{highlight(current_test)} Type #{highlight(mock_or_event)} with doc:name \"#{highlight(last_doc_name)}\""
     puts ""
     puts highlight_xml(element)
     puts ""
@@ -218,13 +218,13 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
       changes_made = true
     when 'E'
       edit_file(dwl_file_path)
-      changes_made=tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
+      changes_made=tidy_readUrl(element,last_doc_name,mock_or_event,current_test,munit_directory_path)
     end
   end
   return changes_made
 end
 
-def tidy_assert(element,last_doc_name,munit_directory_path)
+def tidy_assert(element,last_doc_name,current_test,munit_directory_path)
 
   # Extract the DWL file path from the CDATA content
   if element.to_s =~ /import\s+([^\s:]+)::([^\s]+)/
@@ -244,7 +244,7 @@ def tidy_assert(element,last_doc_name,munit_directory_path)
     # UI
     clear_screen()
     print_separator()
-    puts "In #{highlight('assert')} with doc:name \"#{highlight(last_doc_name)}\""
+    puts "In #{highlight(current_test)} Type #{highlight('assert')} with doc:name \"#{highlight(last_doc_name)}\""
     puts ""
     puts highlight_xml(element)
     puts ""
@@ -265,13 +265,14 @@ def tidy_assert(element,last_doc_name,munit_directory_path)
       changes_made = true
     when 'E'
       edit_file(dwl_file_path)
-      changes_made=tidy_assert(element,last_doc_name,munit_directory_path)
+      changes_made=tidy_assert(element,last_doc_name,current_test,munit_directory_path)
     end
   end
   return changes_made
 end
 
-def tidy_up(munit_file_path)
+def tidy_up(munit_file_path,test_name)
+  puts test_name
   absolute_path = File.expand_path(munit_file_path)
   xml_doc = Document.new(File.new(absolute_path))
   munit_directory_path = File.dirname(absolute_path)
@@ -281,8 +282,11 @@ def tidy_up(munit_file_path)
   last_doc_name=""
   # This is used to provide context for the user
   mock_or_event=""
+  current_test=""
   xml_doc.elements.each('//*') do |element|
-    if element.name == "mock-when"
+    if element.name == "test"
+      current_test = element.attributes["name"]
+    elsif element.name == "mock-when"
       last_doc_name = element.attributes["doc:name"]
       mock_or_event="mock"
 
@@ -290,10 +294,12 @@ def tidy_up(munit_file_path)
       last_doc_name = element.attributes["doc:name"]
       mock_or_event="set-event"
     elsif element.name == "that"
-      changed=tidy_assert(element,last_doc_name,munit_directory_path)
+      next if !test_name.nil? && current_test!=test_name
+      changed=tidy_assert(element,last_doc_name,current_test,munit_directory_path)
       changes_made||=changed
     else
-      changed=tidy_readUrl(element,last_doc_name,mock_or_event,munit_directory_path)
+      next if !test_name.nil? && current_test!=test_name
+      changed=tidy_readUrl(element,last_doc_name,mock_or_event,current_test,munit_directory_path)
       changes_made||=changed
     end
   end
@@ -344,12 +350,13 @@ def tidy_up(munit_file_path)
 end
 
 if __FILE__ == $PROGRAM_NAME
-  if ARGV.length != 1
-    puts "Usage: ruby #{__FILE__} path/to/munit_file.xml"
+  if ARGV.length < 1
+    puts "Usage: ruby #{__FILE__} path/to/munit_file.xml [test name]"
     exit 1
   end
 
   file_path = ARGV[0]
+  test_name = ARGV[1]
   ARGV.clear
-  tidy_up(file_path) 
+  tidy_up(file_path,test_name)
 end

@@ -47,6 +47,12 @@ gem install tty-prompt rouge fileutils
 
 The script will automatically process the specified MUnit test file, prompting you at each step for actions to take on external references and elements within the file.
 
+To tidy-up a specific test, you can pass the test name as an argument:
+
+   ```
+   tidy-up-munit-recording path/to/your/munit_test_file.xml test_name
+   ```
+
 ## Caveats
 
 ### Filename Suggestions
@@ -68,3 +74,6 @@ This project is licensed under the [MIT License](LICENSE.md) - see the LICENSE f
 ## Acknowledgments
 
 - MUnit and MuleSoft are trademarks of MuleSoft LLC, a Salesforce company.
+
+
+## TODO
