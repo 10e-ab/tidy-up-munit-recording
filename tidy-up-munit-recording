@@ -194,8 +194,7 @@ def tidy_readUrl(element,last_doc_name,mock_or_event,current_test,munit_director
       when "payload"
         element.attributes['value'] = "#{expression_start}#{dwl_content}#{expression_end}"
       else
-        #It looks like we dont need the "%dw 2.0 output... for attributes and variables. But this could potentially cause issues...
-        element.attributes['value'] = "#[#{dwl_content}]"
+        element.attributes['value'] = "#{expression_start}#{dwl_content}#{expression_end}"
       end
       $files_to_delete << dwl_file_path
       changes_made = true
