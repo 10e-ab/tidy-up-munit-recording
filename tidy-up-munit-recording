@@ -287,7 +287,7 @@ def tidy_with_attributes(element,last_doc_name,current_test,doc_id_to_doc_name)
     puts highlight_xml(element)
     puts ""
     print_separator()
-    action=prompt_for_action("Action: 'A' Add doc:name \"#{doc_name}\" Confirm with Enter.",["A",""])
+    action=prompt_for_action("Action: 'A' Add <munit-tools:with-attribute attributeName='doc:name' whereValue=\"#{doc_name}\"/> Confirm with Enter.",["A",""])
 
     case action
     when 'A'
