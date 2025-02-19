@@ -270,11 +270,71 @@ def tidy_assert(element,last_doc_name,current_test,munit_directory_path)
   return changes_made
 end
 
+def tidy_with_attributes(element,last_doc_name,current_test,doc_id_to_doc_name)
+
+  # Find all <munit-tools:with-attribute> children
+  attributes = element.elements.to_a("munit-tools:with-attribute")
+
+  # Check if there's exactly one <munit-tools:with-attribute> and it has attributeName="doc:id"
+  if attributes.size == 1 && attributes.first.attributes["attributeName"] == "doc:id"
+    doc_name = doc_id_to_doc_name[attributes.first.attributes["whereValue"]]
+    return if doc_name.nil?
+
+    clear_screen()
+    print_separator()
+    puts "In #{highlight(current_test)} Type #{highlight('assert')} with doc:name \"#{highlight(last_doc_name)}\""
+    puts ""
+    puts highlight_xml(element)
+    puts ""
+    print_separator()
+    action=prompt_for_action("Action: 'A' Add doc:name \"#{doc_name}\" Confirm with Enter.",["A",""])
+
+    case action
+    when 'A'
+      # Clear existing CDATA or text
+      # Create new <munit-tools:with-attribute> for doc:name
+      new_attribute = REXML::Element.new("munit-tools:with-attribute")
+      new_attribute.add_attribute("whereValue", doc_name)
+      new_attribute.add_attribute("attributeName", "doc:name")
+
+      # Add it to <munit-tools:with-attributes>
+      element.add_element(new_attribute)
+      changes_made = true
+    end
+  end
+
+  return changes_made
+end
+
+def create_doc_id_to_name_map(mule_directory_path)
+  doc_map = {}
+
+  Dir.glob("#{mule_directory_path}/*.xml").each do |file|
+    xml_content = File.read(file)
+    xml_doc = REXML::Document.new(xml_content)
+
+    # Find all elements with doc:id and doc:name
+    REXML::XPath.each(xml_doc, "//*[@doc:id][@doc:name]") do |node|
+      doc_id = node.attributes["doc:id"]
+      doc_name = node.attributes["doc:name"]
+
+      doc_map[doc_id] = doc_name
+    end
+  end
+  doc_map
+
+end
+
+
 def tidy_up(munit_file_path,test_name)
   puts test_name
   absolute_path = File.expand_path(munit_file_path)
   xml_doc = Document.new(File.new(absolute_path))
   munit_directory_path = File.dirname(absolute_path)
+  mule_directory_path = File.expand_path(munit_file_path ++ "../../../../main/mule")
+  doc_id_to_doc_name=create_doc_id_to_name_map(mule_directory_path)
+
+  puts mule_directory_path
   changes_made=false
 
   # This is used to suggest a file name
@@ -295,6 +355,10 @@ def tidy_up(munit_file_path,test_name)
     elsif element.name == "that"
       next if !test_name.nil? && current_test!=test_name
       changed=tidy_assert(element,last_doc_name,current_test,munit_directory_path)
+      changes_made||=changed
+    elsif element.name == "with-attributes"
+      next if !test_name.nil? && current_test!=test_name
+      changed=tidy_with_attributes(element,last_doc_name,current_test,doc_id_to_doc_name)
       changes_made||=changed
     else
       next if !test_name.nil? && current_test!=test_name
