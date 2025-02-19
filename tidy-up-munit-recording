@@ -308,6 +308,7 @@ end
 
 def create_doc_id_to_name_map(mule_directory_path)
   doc_map = {}
+  warn=false
 
   Dir.glob("#{mule_directory_path}/*.xml").each do |file|
     xml_content = File.read(file)
@@ -318,8 +319,18 @@ def create_doc_id_to_name_map(mule_directory_path)
       doc_id = node.attributes["doc:id"]
       doc_name = node.attributes["doc:name"]
 
+      if doc_map[doc_id]
+        puts "Duplicate doc:id found in: #{file} with id: \"#{doc_id}\" and name: \"#{doc_name}\". Already exists with name: \"#{doc_map[doc_id]}\""
+        warn=true
+      end
+
       doc_map[doc_id] = doc_name
     end
+  end
+  if warn
+    puts highlight("Warning: Duplicates doc:id can cause issues with munit and when adding doc:name to <mock-tools:with-attribute), consider fixing them before continuing")
+    puts "Press enter to continue"
+    STDIN.gets
   end
   doc_map
 
